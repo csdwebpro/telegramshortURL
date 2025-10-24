@@ -1,14 +1,14 @@
 import os
 import logging
 import re
-from typing import Optional, Dict, List
+from typing import Optional, Dict
 from urllib.parse import urlparse
 
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, filters,
-    ContextTypes, CallbackQueryHandler
+    Updater, CommandHandler, MessageHandler, Filters,
+    CallbackContext, CallbackQueryHandler
 )
 from dotenv import load_dotenv
 
@@ -23,8 +23,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class URLShortenerBot:
-    def __init__(self, token: str):
-        self.token = token
+    def __init__(self):
         self.ouo_api_url = "http://ouo.io/api/JIx6qdJt?s="
         self.user_stats = {}  # Store user statistics
         
@@ -72,11 +71,11 @@ class URLShortenerBot:
         """Get user statistics"""
         return self.user_stats.get(user_id, {'urls_shortened': 0})
 
-# Initialize bot with your token
+# Initialize bot
+bot = URLShortenerBot()
 BOT_TOKEN = "8239963008:AAFm8PU6N_432qAsz_v1yK4EgDL3_YP0xmA"
-bot = URLShortenerBot(BOT_TOKEN)
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def start_command(update: Update, context: CallbackContext):
     """Send welcome message when the command /start is issued."""
     user = update.effective_user
     welcome_text = f"""
@@ -109,13 +108,13 @@ Send me a URL to get started! 🚀
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
+    update.message.reply_text(
         welcome_text,
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def help_command(update: Update, context: CallbackContext):
     """Send help message when the command /help is issued."""
     help_text = """
 🆘 *Help Guide*
@@ -142,9 +141,9 @@ If you encounter any issues, make sure your URL is valid and accessible.
 Happy shortening! 🎉
     """
     
-    await update.message.reply_text(help_text, parse_mode='Markdown')
+    update.message.reply_text(help_text, parse_mode='Markdown')
 
-async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def stats_command(update: Update, context: CallbackContext):
     """Show user statistics."""
     user_id = update.effective_user.id
     stats = bot.get_user_stats(user_id)
@@ -158,9 +157,9 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Keep shortening! The more you use, the more you save! 💪
     """
     
-    await update.message.reply_text(stats_text, parse_mode='Markdown')
+    update.message.reply_text(stats_text, parse_mode='Markdown')
 
-async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def about_command(update: Update, context: CallbackContext):
     """Show about information."""
     about_text = """
 🤖 *Advanced URL Shortener Bot*
@@ -181,9 +180,9 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Thank you for using our bot! ❤️
     """
     
-    await update.message.reply_text(about_text, parse_mode='Markdown')
+    update.message.reply_text(about_text, parse_mode='Markdown')
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def handle_message(update: Update, context: CallbackContext):
     """Handle incoming messages and shorten URLs."""
     message_text = update.message.text.strip()
     user_id = update.effective_user.id
@@ -193,7 +192,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     urls_found = re.findall(url_pattern, message_text)
     
     if not urls_found:
-        await update.message.reply_text(
+        update.message.reply_text(
             "❌ Please send a valid URL to shorten.\n"
             "Use /help for instructions."
         )
@@ -202,7 +201,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Process each found URL
     for url in urls_found:
         # Show typing action
-        await update.message.chat.send_action(action="typing")
+        context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         
         # Shorten the URL
         shortened_url = bot.shorten_url(url)
@@ -234,7 +233,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await update.message.reply_text(
+            update.message.reply_text(
                 response_text,
                 reply_markup=reply_markup,
                 parse_mode='Markdown',
@@ -258,12 +257,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Use /help for more guidance.
             """
-            await update.message.reply_text(error_text, parse_mode='Markdown')
+            update.message.reply_text(error_text, parse_mode='Markdown')
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def button_handler(update: Update, context: CallbackContext):
     """Handle inline keyboard button presses."""
     query = update.callback_query
-    await query.answer()
+    query.answer()
     
     user_id = query.from_user.id
     
@@ -276,52 +275,58 @@ I support all common URL formats.
 
 Need more help? Use /help for detailed instructions.
         """
-        await query.edit_message_text(help_text, parse_mode='Markdown')
+        query.edit_message_text(help_text, parse_mode='Markdown')
     
     elif query.data == "stats":
         stats = bot.get_user_stats(user_id)
         stats_text = f"📊 Your Stats:\n🔗 URLs Shortened: {stats['urls_shortened']}"
-        await query.edit_message_text(stats_text)
+        query.edit_message_text(stats_text)
     
     elif query.data == "about":
         about_text = "🤖 Advanced URL Shortener Bot v2.0\nUsing OUO.io API"
-        await query.edit_message_text(about_text)
+        query.edit_message_text(about_text)
     
     elif query.data == "shorten_another":
-        await query.edit_message_text("🔗 Send me another URL to shorten!")
+        query.edit_message_text("🔗 Send me another URL to shorten!")
 
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def error_handler(update: Update, context: CallbackContext):
     """Log errors and send a friendly message."""
     logger.error(f"Exception while handling an update: {context.error}")
     
     # Send a friendly error message
     if update and update.effective_message:
-        await update.effective_message.reply_text(
+        update.effective_message.reply_text(
             "❌ Sorry, something went wrong. Please try again later."
         )
 
 def main():
     """Start the bot."""
-    # Create Application
-    application = Application.builder().token(BOT_TOKEN).build()
+    # Create Updater
+    updater = Updater(BOT_TOKEN, use_context=True)
+    
+    # Get dispatcher to register handlers
+    dp = updater.dispatcher
     
     # Add handlers
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("stats", stats_command))
-    application.add_handler(CommandHandler("about", about_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(CallbackQueryHandler(button_handler))
+    dp.add_handler(CommandHandler("start", start_command))
+    dp.add_handler(CommandHandler("help", help_command))
+    dp.add_handler(CommandHandler("stats", stats_command))
+    dp.add_handler(CommandHandler("about", about_command))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+    dp.add_handler(CallbackQueryHandler(button_handler))
     
     # Add error handler
-    application.add_error_handler(error_handler)
+    dp.add_error_handler(error_handler)
     
     # Start the Bot
     print("🤖 Bot is running...")
     print("Press Ctrl+C to stop")
     
+    # Start polling
+    updater.start_polling()
+    
     # Run the bot until you press Ctrl-C
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    updater.idle()
 
 if __name__ == '__main__':
     main()
